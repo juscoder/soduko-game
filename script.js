@@ -9,6 +9,9 @@ let timerInterval;
 let timeElapsed = 0;
 let currentDifficulty = 'easy'; // Default difficulty
 
+let selectedNumber = null; // Active palette value (0 = eraser), null = none
+let selectedCell = null; // {row, col} of the selected cell, null = none
+
 // DOM Elements
 const sudokuGridEl = document.getElementById('sudoku-grid');
 const timerEl = document.getElementById('timer');
@@ -21,50 +24,64 @@ const numberPalette = document.getElementById('number-palette');
 // --- Sudoku Generation and Solving Logic ---
 
 /**
+ * Finds the first empty cell on the board.
+ * @param {number[][]} board - The 9x9 board to scan.
+ * @returns {[number, number]|null} - [row, col] or null if the board is full.
+ */
+function findEmpty(board) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            if (board[r][c] === EMPTY_CELL) {
+                return [r, c];
+            }
+        }
+    }
+    return null; // No empty cells
+}
+
+/**
+ * Checks if placing `num` at (row, col) respects Sudoku rules
+ * (row, column and 3x3 box uniqueness).
+ * @param {number[][]} board - The 9x9 board.
+ * @param {number} row - Target row.
+ * @param {number} col - Target column.
+ * @param {number} num - Number to place.
+ * @returns {boolean} - True if the move is valid.
+ */
+function isValid(board, row, col, num) {
+    // Check row
+    for (let x = 0; x < BOARD_SIZE; x++) {
+        if (board[row][x] === num && x !== col) {
+            return false;
+        }
+    }
+
+    // Check column
+    for (let x = 0; x < BOARD_SIZE; x++) {
+        if (board[x][col] === num && x !== row) {
+            return false;
+        }
+    }
+
+    // Check 3x3 box
+    const startRow = Math.floor(row / 3) * 3;
+    const startCol = Math.floor(col / 3) * 3;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (board[startRow + i][startCol + j] === num && (startRow + i !== row || startCol + j !== col)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
  * Generates a full valid Sudoku board using backtracking.
  * @param {number[][]} board - The 9x9 board to fill.
  * @returns {boolean} - True if a solution is found, false otherwise.
  */
 function solveSudoku(board) {
-    const findEmpty = (b) => {
-        for (let r = 0; r < BOARD_SIZE; r++) {
-            for (let c = 0; c < BOARD_SIZE; c++) {
-                if (b[r][c] === EMPTY_CELL) {
-                    return [r, c];
-                }
-            }
-        }
-        return null; // No empty cells
-    };
-
-    const isValid = (b, row, col, num) => {
-        // Check row
-        for (let x = 0; x < BOARD_SIZE; x++) {
-            if (b[row][x] === num && x !== col) {
-                return false;
-            }
-        }
-
-        // Check column
-        for (let x = 0; x < BOARD_SIZE; x++) {
-            if (b[x][col] === num && x !== row) {
-                return false;
-            }
-        }
-
-        // Check 3x3 box
-        const startRow = Math.floor(row / 3) * 3;
-        const startCol = Math.floor(col / 3) * 3;
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (b[startRow + i][startCol + j] === num && (startRow + i !== row || startCol + j !== col)) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    };
-
     const emptyPos = findEmpty(board);
     if (!emptyPos) {
         return true; // Board is solved
@@ -91,6 +108,98 @@ function solveSudoku(board) {
 }
 
 /**
+ * Counts the solutions of a puzzle, stopping as soon as `limit` is reached.
+ * Uses row/column/box bitmasks (9 bits each) for O(1) validity checks.
+ * Used to guarantee that a puzzle has exactly one solution.
+ * @param {number[][]} board - The puzzle to analyse (not mutated).
+ * @param {number} limit - Maximum number of solutions to look for.
+ * @returns {number} - Solutions found (capped at `limit`).
+ */
+function countSolutions(board, limit = 2) {
+    const ALL_BITS = (1 << BOARD_SIZE) - 1;
+    const rowMask = new Array(BOARD_SIZE).fill(0);
+    const colMask = new Array(BOARD_SIZE).fill(0);
+    const boxMask = new Array(BOARD_SIZE).fill(0);
+    const emptyCells = [];
+
+    const popcount = (bits) => {
+        let count = 0;
+        while (bits) {
+            bits &= bits - 1; // Drops the lowest set bit
+            count++;
+        }
+        return count;
+    };
+
+    // Build the masks and collect the empty cells in row-major order
+    for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+            const value = board[r][c];
+            if (value === EMPTY_CELL) {
+                emptyCells.push([r, c]);
+            } else {
+                const bit = 1 << (value - 1);
+                rowMask[r] |= bit;
+                colMask[c] |= bit;
+                boxMask[Math.floor(r / 3) * 3 + Math.floor(c / 3)] |= bit;
+            }
+        }
+    }
+
+    const solve = (idx, remaining) => {
+        if (idx === emptyCells.length) {
+            return 1; // Every empty cell was filled validly
+        }
+
+        // MRV heuristic: fill the most constrained cell first (fewest candidates)
+        let best = idx;
+        let bestAvail = 0;
+        let bestCount = BOARD_SIZE + 1;
+        for (let i = idx; i < emptyCells.length; i++) {
+            const [r, c] = emptyCells[i];
+            const avail = ~(rowMask[r] | colMask[c] | boxMask[Math.floor(r / 3) * 3 + Math.floor(c / 3)]) & ALL_BITS;
+            const count = popcount(avail);
+            if (count === 0) {
+                return 0; // A cell has no candidates: this branch is impossible
+            }
+            if (count < bestCount) {
+                bestCount = count;
+                best = i;
+                bestAvail = avail;
+                if (count === 1) break;
+            }
+        }
+        if (best !== idx) {
+            [emptyCells[idx], emptyCells[best]] = [emptyCells[best], emptyCells[idx]];
+        }
+
+        const [row, col] = emptyCells[idx];
+        const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+        let count = 0;
+
+        for (let num = 1; num <= BOARD_SIZE; num++) {
+            const bit = 1 << (num - 1);
+            if (!(bestAvail & bit)) continue;
+
+            rowMask[row] |= bit;
+            colMask[col] |= bit;
+            boxMask[box] |= bit;
+
+            count += solve(idx + 1, remaining - count);
+
+            rowMask[row] &= ~bit;
+            colMask[col] &= ~bit;
+            boxMask[box] &= ~bit;
+
+            if (count >= remaining) break;
+        }
+        return count;
+    };
+
+    return solve(0, limit);
+}
+
+/**
  * Creates a new empty 9x9 Sudoku board.
  * @returns {number[][]} - A 9x9 array filled with EMPTY_CELL.
  */
@@ -100,6 +209,8 @@ function createEmptyBoard() {
 
 /**
  * Generates a new Sudoku puzzle based on difficulty.
+ * Cells are only removed while the puzzle keeps a UNIQUE solution,
+ * so the game is always solvable in exactly one way.
  * @param {string} difficulty - 'easy', 'medium', or 'hard'.
  */
 function generateSudoku(difficulty) {
@@ -125,24 +236,48 @@ function generateSudoku(difficulty) {
     // 2. Store the solution
     solutionBoard = fullBoard.map(row => [...row]); // Deep copy
 
-    // 3. Create the puzzle by removing cells
+    // 3. Create the puzzle by removing cells, one by one, keeping it unique.
+    //    Cells are visited in random passes (up to 2 passes over the board)
+    //    with a time budget, so generation never freezes the UI.
     const puzzleBoard = fullBoard.map(row => [...row]); // Start with a copy of the full board
     let removedCount = 0;
+    let attempts = 0; // Only counts real uniqueness checks
+    const maxAttempts = BOARD_SIZE * BOARD_SIZE * 2;
+    const timeBudgetMs = 400;
+    const startTime = Date.now();
 
-    while (removedCount < cellsToRemove) {
-        const row = Math.floor(Math.random() * BOARD_SIZE);
-        const col = Math.floor(Math.random() * BOARD_SIZE);
+    while (removedCount < cellsToRemove && attempts < maxAttempts && Date.now() - startTime < timeBudgetMs) {
+        // Random order for this pass
+        const positions = [];
+        for (let r = 0; r < BOARD_SIZE; r++) {
+            for (let c = 0; c < BOARD_SIZE; c++) {
+                positions.push([r, c]);
+            }
+        }
+        for (let i = positions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [positions[i], positions[j]] = [positions[j], positions[i]];
+        }
 
-        if (puzzleBoard[row][col] !== EMPTY_CELL) {
-            const temp = puzzleBoard[row][col];
+        for (const [row, col] of positions) {
+            if (removedCount >= cellsToRemove || attempts >= maxAttempts || Date.now() - startTime >= timeBudgetMs) {
+                break;
+            }
+            if (puzzleBoard[row][col] === EMPTY_CELL) {
+                continue;
+            }
+
+            attempts++;
+            const removedValue = puzzleBoard[row][col];
             puzzleBoard[row][col] = EMPTY_CELL;
 
-            // Optional: Check if the puzzle still has a unique solution.
-            // This is computationally expensive and often skipped for simpler games.
-            // For this example, we'll assume removing cells randomly is sufficient.
-            // A full unique solution check would involve solving the puzzle and ensuring only one solution exists.
-
-            removedCount++;
+            if (countSolutions(puzzleBoard, 2) === 1) {
+                // The puzzle still has exactly one solution: keep the removal
+                removedCount++;
+            } else {
+                // Removing this cell would make the puzzle ambiguous: restore it
+                puzzleBoard[row][col] = removedValue;
+            }
         }
     }
 
@@ -157,6 +292,7 @@ function generateSudoku(difficulty) {
  */
 function renderBoard() {
     sudokuGridEl.innerHTML = ''; // Clear existing grid
+    selectedCell = null;
 
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
@@ -176,12 +312,154 @@ function renderBoard() {
                 }
             }
 
-            // Add drag and drop event listeners to cells
+            // Drag and drop (desktop) and click/tap (all devices)
             cell.addEventListener('dragover', handleDragOver);
             cell.addEventListener('drop', handleDrop);
             cell.addEventListener('dragleave', handleDragLeave); // For removing drag-over class
+            cell.addEventListener('click', handleCellClick);
 
             sudokuGridEl.appendChild(cell);
+        }
+    }
+
+    updateSelectionStyles();
+}
+
+/**
+ * Returns the DOM element of a given cell.
+ * @param {number} row
+ * @param {number} col
+ * @returns {HTMLElement|null}
+ */
+function getCellElement(row, col) {
+    return sudokuGridEl.querySelector(`.sudoku-cell[data-row="${row}"][data-col="${col}"]`);
+}
+
+/**
+ * Syncs the visual selection of palette numbers and the selected cell.
+ */
+function updateSelectionStyles() {
+    numberPalette.querySelectorAll('.palette-number').forEach(el => {
+        el.classList.toggle('selected', selectedNumber !== null && parseInt(el.dataset.value) === selectedNumber);
+    });
+
+    sudokuGridEl.querySelectorAll('.sudoku-cell.selected').forEach(el => el.classList.remove('selected'));
+
+    if (selectedCell) {
+        const cell = getCellElement(selectedCell.row, selectedCell.col);
+        if (cell) {
+            cell.classList.add('selected');
+        }
+    }
+}
+
+/**
+ * Places a value (or clears it with EMPTY_CELL) on an editable cell.
+ * Single entry point shared by drag & drop, clicks/taps and the keyboard.
+ * @param {number} row - Target row.
+ * @param {number} col - Target column.
+ * @param {number} value - 1-9 to place, EMPTY_CELL to clear.
+ */
+function placeValue(row, col, value) {
+    if (sudokuGridEl.classList.contains('game-over')) {
+        return; // The game is finished: the board is locked
+    }
+    if (initialBoard[row][col] !== EMPTY_CELL) {
+        return; // Fixed cells are read-only
+    }
+
+    const cell = getCellElement(row, col);
+    if (!cell) {
+        return;
+    }
+
+    // Update the board and DOM
+    sudokuBoard[row][col] = value;
+    cell.textContent = value === EMPTY_CELL ? '' : value;
+
+    // Update cell classes
+    cell.classList.remove('user-filled', 'error');
+    if (value !== EMPTY_CELL) {
+        cell.classList.add('user-filled');
+        if (solutionBoard[row][col] !== value) {
+            cell.classList.add('error');
+        }
+    }
+
+    checkGameStatus();
+}
+
+// --- Selection (click / tap / keyboard) ---
+
+/**
+ * Handles a click on an editable cell: selects it, or places the active number.
+ * @param {MouseEvent} event
+ */
+function handleCellClick(event) {
+    const cell = event.currentTarget;
+    const row = parseInt(cell.dataset.row);
+    const col = parseInt(cell.dataset.col);
+
+    if (cell.classList.contains('fixed') || sudokuGridEl.classList.contains('game-over')) {
+        return;
+    }
+
+    if (selectedNumber !== null) {
+        // A palette number is active: place it into the clicked cell
+        selectedCell = { row, col };
+        placeValue(row, col, selectedNumber);
+    } else {
+        // No active number: toggle the cell selection
+        if (selectedCell && selectedCell.row === row && selectedCell.col === col) {
+            selectedCell = null;
+        } else {
+            selectedCell = { row, col };
+        }
+    }
+
+    updateSelectionStyles();
+}
+
+/**
+ * Handles a click on a palette number: toggles it (or applies it to the selected cell).
+ * @param {MouseEvent} event
+ */
+function handlePaletteClick(event) {
+    const value = parseInt(event.currentTarget.dataset.value);
+
+    // Toggle the active number (0 = eraser)
+    selectedNumber = (selectedNumber === value) ? null : value;
+
+    // If a cell is selected, apply the number to it right away
+    if (selectedNumber !== null && selectedCell) {
+        placeValue(selectedCell.row, selectedCell.col, selectedNumber);
+    }
+
+    updateSelectionStyles();
+}
+
+/**
+ * Keyboard input: 1-9 places a number, 0/Backspace/Delete clears the selected cell.
+ * @param {KeyboardEvent} event
+ */
+function handleKeydown(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+    }
+
+    if (event.key.length === 1 && event.key >= '1' && event.key <= '9') {
+        selectedNumber = parseInt(event.key);
+        if (selectedCell) {
+            placeValue(selectedCell.row, selectedCell.col, selectedNumber);
+        }
+        updateSelectionStyles();
+    } else if (event.key === '0' || event.key === 'Backspace' || event.key === 'Delete') {
+        if (selectedCell) {
+            placeValue(selectedCell.row, selectedCell.col, EMPTY_CELL);
+            event.preventDefault(); // Avoid the browser going "back" on Backspace
+        } else if (selectedNumber !== null) {
+            selectedNumber = null;
+            updateSelectionStyles();
         }
     }
 }
@@ -238,30 +516,11 @@ function handleDrop(event) {
 
     cell.classList.remove('drag-over'); // Remove drag-over class
 
-    const row = parseInt(cell.dataset.row);
-    const col = parseInt(cell.dataset.col);
-
-    // Get the value from the global `draggedValue`
-    const valueToPlace = draggedValue;
-
-    // Update the board and DOM
-    sudokuBoard[row][col] = valueToPlace;
-    cell.textContent = valueToPlace === EMPTY_CELL ? '' : valueToPlace;
-
-    // Update cell classes
-    cell.classList.remove('user-filled', 'error');
-    if (valueToPlace !== EMPTY_CELL) {
-        cell.classList.add('user-filled');
+    if (draggedValue === null || draggedValue === undefined) {
+        return;
     }
 
-    // Check if the move is valid according to Sudoku rules (optional, for immediate feedback)
-    // For this game, we'll check validity only when the game is completed.
-    // However, we can add a visual error if the number is wrong compared to the solution.
-    if (valueToPlace !== EMPTY_CELL && solutionBoard[row][col] !== valueToPlace) {
-        cell.classList.add('error');
-    }
-
-    checkGameStatus();
+    placeValue(parseInt(cell.dataset.row), parseInt(cell.dataset.col), draggedValue);
 }
 
 // --- Timer Logic ---
@@ -324,7 +583,7 @@ function checkGameStatus() {
     if (isSolved) {
         stopTimer();
         showMessage('Congratulations! You solved the Sudoku!', 'success');
-        // Optionally disable further moves
+        // Lock the board: no further moves allowed
         sudokuGridEl.classList.add('game-over');
     } else {
         showMessage('', ''); // Clear message if not solved
@@ -352,6 +611,8 @@ function newGame(difficulty) {
     currentDifficulty = difficulty;
     resetTimer();
     showMessage('', ''); // Clear any previous messages
+    selectedNumber = null;
+    selectedCell = null;
     sudokuGridEl.classList.remove('game-over'); // Enable moves
 
     generateSudoku(difficulty);
@@ -360,9 +621,15 @@ function newGame(difficulty) {
 }
 
 /**
- * Clears all user-filled cells.
+ * Clears all user-filled cells. If the game had already been won,
+ * it unlocks the board and resumes the timer.
  */
 function clearUserMoves() {
+    if (sudokuGridEl.classList.contains('game-over')) {
+        sudokuGridEl.classList.remove('game-over');
+        startTimer(); // Resume from the stored elapsed time
+    }
+
     for (let r = 0; r < BOARD_SIZE; r++) {
         for (let c = 0; c < BOARD_SIZE; c++) {
             if (initialBoard[r][c] === EMPTY_CELL) {
@@ -372,9 +639,9 @@ function clearUserMoves() {
         }
     }
     renderBoard(); // Re-render to reflect cleared cells
-    showMessage('Your moves have been cleared.', '');
     // Re-check game status in case clearing makes it unsolved
     checkGameStatus();
+    showMessage('Your moves have been cleared.', '');
 }
 
 // --- Event Listeners ---
@@ -394,14 +661,17 @@ newGameBtn.addEventListener('click', () => newGame(currentDifficulty));
 // Clear My Moves button
 clearBtn.addEventListener('click', clearUserMoves);
 
-// Number palette drag start
+// Number palette: drag & drop (desktop) and click/tap (all devices)
 numberPalette.querySelectorAll('.palette-number').forEach(numEl => {
     numEl.addEventListener('dragstart', handleDragStart);
-    // Optional: Add dragend to remove dragging class from palette number
     numEl.addEventListener('dragend', (event) => {
         event.target.classList.remove('dragging');
     });
+    numEl.addEventListener('click', handlePaletteClick);
 });
+
+// Keyboard input
+document.addEventListener('keydown', handleKeydown);
 
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {

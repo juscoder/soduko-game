@@ -127,6 +127,12 @@ h1 {
     overflow: hidden; /* Ensures inner borders don't overflow rounded corners */
 }
 
+/* Victory: lock the board so no more moves can be made */
+.sudoku-grid.game-over .sudoku-cell {
+    pointer-events: none;
+    cursor: default;
+}
+
 .sudoku-cell {
     width: 100%;
     height: 100%;
@@ -165,6 +171,12 @@ h1 {
 
 .sudoku-cell.user-filled {
     color: var(--secondary-color);
+}
+
+.sudoku-cell.selected {
+    background-color: var(--selected-cell-bg);
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
 }
 
 .sudoku-cell.error {
@@ -210,6 +222,12 @@ h1 {
 .palette-number:hover {
     background-color: var(--palette-number-hover-bg);
     transform: translateY(-2px);
+}
+
+.palette-number.selected {
+    background-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
 }
 
 .palette-number:active {
