@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <h1>Sudoku</h1>
+
+        <div class="controls">
+            <div class="difficulty-selection">
+                <button id="easy-btn" class="difficulty-btn active" data-difficulty="easy">Easy</button>
+                <button id="medium-btn" class="difficulty-btn" data-difficulty="medium">Medium</button>
+                <button id="hard-btn" class="difficulty-btn" data-difficulty="hard">Hard</button>
+            </div>
+            <div class="game-info">
+                <div id="timer" class="timer">00:00</div>
+                <button id="new-game-btn" class="control-btn">New Game</button>
+                <button id="clear-btn" class="control-btn">Clear My Moves</button>
+            </div>
+        </div>
+
+        <div id="sudoku-grid" class="sudoku-grid">
+            <!-- Sudoku cells will be generated here by JavaScript -->
+        </div>
+
+        <div id="number-palette" class="number-palette">
+            <!-- Numbers 1-9 for dragging -->
+            <div class="palette-number" draggable="true" data-value="1">1</div>
+            <div class="palette-number" draggable="true" data-value="2">2</div>
+            <div class="palette-number" draggable="true" data-value="3">3</div>
+            <div class="palette-number" draggable="true" data-value="4">4</div>
+            <div class="palette-number" draggable="true" data-value="5">5</div>
+            <div class="palette-number" draggable="true" data-value="6">6</div>
+            <div class="palette-number" draggable="true" data-value="7">7</div>
+            <div class="palette-number" draggable="true" data-value="8">8</div>
+            <div class="palette-number" draggable="true" data-value="9">9</div>
+            <div class="palette-number clear-number" draggable="true" data-value="0">X</div> <!-- For clearing a cell -->
+        </div>
+
+        <div id="game-message" class="game-message"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

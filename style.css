@@ -1,0 +1,328 @@
+:root {
+    --bg-color: #f0f2f5;
+    --primary-color: #4CAF50;
+    --secondary-color: #2196F3;
+    --text-color: #333;
+    --border-color: #ccc;
+    --grid-border-color: #666;
+    --fixed-cell-bg: #e0e0e0;
+    --hover-cell-bg: #f5f5f5;
+    --selected-cell-bg: #c8e6c9; /* Light green */
+    --drag-over-cell-bg: #a5d6a7; /* Darker green */
+    --palette-bg: #fff;
+    --palette-number-bg: #e0e0e0;
+    --palette-number-hover-bg: #ccc;
+    --error-color: #f44336;
+    --success-color: #4CAF50;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: var(--bg-color);
+    margin: 0;
+    color: var(--text-color);
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.game-container {
+    background-color: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+    padding: 30px;
+    text-align: center;
+    max-width: 600px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+h1 {
+    color: var(--primary-color);
+    margin-bottom: 25px;
+    font-size: 2.5em;
+    letter-spacing: 1px;
+}
+
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    gap: 15px;
+}
+
+.difficulty-selection, .game-info {
+    display: flex;
+    gap: 10px;
+}
+
+.difficulty-btn, .control-btn {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.3s ease, transform 0.1s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.difficulty-btn {
+    background-color: #e0e0e0;
+    color: var(--text-color);
+}
+
+.difficulty-btn:hover {
+    background-color: #d0d0d0;
+}
+
+.difficulty-btn.active {
+    background-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.difficulty-btn.active:hover {
+    background-color: var(--primary-color); /* Keep same on hover when active */
+}
+
+.control-btn {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.control-btn:hover {
+    background-color: #1976D2; /* Darker blue */
+    transform: translateY(-1px);
+}
+
+.timer {
+    font-size: 1.5em;
+    font-weight: bold;
+    color: var(--primary-color);
+    background-color: #f0f0f0;
+    padding: 8px 15px;
+    border-radius: 8px;
+    min-width: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.sudoku-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    grid-template-rows: repeat(9, 1fr);
+    width: 100%;
+    max-width: 450px; /* Max width for the grid itself */
+    aspect-ratio: 1 / 1; /* Keep it square */
+    margin: 25px auto;
+    border: 3px solid var(--grid-border-color);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+    overflow: hidden; /* Ensures inner borders don't overflow rounded corners */
+}
+
+.sudoku-cell {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.6em;
+    font-weight: bold;
+    border: 1px solid var(--border-color);
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: background-color 0.1s ease;
+    user-select: none; /* Prevent text selection */
+}
+
+/* Thicker borders for 3x3 blocks */
+.sudoku-cell:nth-child(3n) { border-right: 2px solid var(--grid-border-color); }
+.sudoku-cell:nth-child(9n) { border-right: 1px solid var(--border-color); } /* Override for last column */
+.sudoku-cell:nth-child(9n+1) { clear: both; } /* New row */
+
+.sudoku-cell:nth-child(n+19):nth-child(-n+27),
+.sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+    border-bottom: 2px solid var(--grid-border-color);
+}
+
+/* Specific overrides for the last row/column cells */
+.sudoku-cell:nth-child(n+73) { border-bottom: 1px solid var(--border-color); }
+.sudoku-cell:nth-child(3n):not(:nth-child(9n)) { border-right: 2px solid var(--grid-border-color); }
+
+
+.sudoku-cell.fixed {
+    background-color: var(--fixed-cell-bg);
+    color: var(--text-color);
+    cursor: default;
+}
+
+.sudoku-cell.user-filled {
+    color: var(--secondary-color);
+}
+
+.sudoku-cell.error {
+    background-color: #ffebee; /* Light red */
+    color: var(--error-color);
+}
+
+.sudoku-cell.drag-over {
+    background-color: var(--drag-over-cell-bg);
+    border: 2px dashed var(--primary-color);
+}
+
+.sudoku-cell:not(.fixed):hover {
+    background-color: var(--hover-cell-bg);
+}
+
+.number-palette {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 25px;
+    background-color: var(--palette-bg);
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+.palette-number {
+    width: 45px;
+    height: 45px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--palette-number-bg);
+    border-radius: 8px;
+    font-size: 1.4em;
+    font-weight: bold;
+    cursor: grab;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.palette-number:hover {
+    background-color: var(--palette-number-hover-bg);
+    transform: translateY(-2px);
+}
+
+.palette-number:active {
+    cursor: grabbing;
+    transform: translateY(0);
+}
+
+.palette-number.clear-number {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.palette-number.clear-number:hover {
+    background-color: #d32f2f; /* Darker red */
+}
+
+.game-message {
+    margin-top: 25px;
+    font-size: 1.2em;
+    font-weight: bold;
+    min-height: 30px; /* Reserve space */
+}
+
+.game-message.success {
+    color: var(--success-color);
+}
+
+.game-message.error {
+    color: var(--error-color);
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .game-container {
+        padding: 20px;
+    }
+
+    h1 {
+        font-size: 2em;
+        margin-bottom: 20px;
+    }
+
+    .controls {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .difficulty-selection, .game-info {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .difficulty-btn, .control-btn {
+        flex: 1;
+        padding: 10px 12px;
+        font-size: 0.95em;
+    }
+
+    .timer {
+        font-size: 1.3em;
+        padding: 6px 12px;
+    }
+
+    .sudoku-grid {
+        max-width: 320px; /* Smaller grid for mobile */
+        margin: 20px auto;
+    }
+
+    .sudoku-cell {
+        font-size: 1.2em;
+    }
+
+    .number-palette {
+        gap: 8px;
+        padding: 10px;
+        flex-wrap: wrap; /* Allow palette numbers to wrap */
+    }
+
+    .palette-number {
+        width: 40px;
+        height: 40px;
+        font-size: 1.2em;
+    }
+}
+
+@media (max-width: 480px) {
+    .game-container {
+        padding: 15px;
+        border-radius: 8px;
+    }
+
+    h1 {
+        font-size: 1.8em;
+        margin-bottom: 15px;
+    }
+
+    .sudoku-grid {
+        max-width: 280px; /* Even smaller grid */
+    }
+
+    .sudoku-cell {
+        font-size: 1em;
+    }
+
+    .number-palette {
+        gap: 6px;
+        padding: 8px;
+    }
+
+    .palette-number {
+        width: 35px;
+        height: 35px;
+        font-size: 1.1em;
+    }
+}
